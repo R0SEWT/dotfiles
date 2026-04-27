@@ -22,6 +22,9 @@ echo "==> Ensuring local fonts are available"
 "$repo_root/scripts/fonts.sh"
 
 if [ "$desktop" = true ]; then
+    echo "==> Installing Colloid GTK theme"
+    "$repo_root/scripts/install-colloid-theme.sh"
+
     echo "==> Applying GNOME desktop settings"
     "$repo_root/scripts/extensions.sh"
     "$repo_root/scripts/gsettings.sh"

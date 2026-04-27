@@ -8,6 +8,8 @@ btop
 dconf-cli
 fzf
 zoxide
+sassc
+gtk2-engines-murrine
 
 # Desktop and theming
 gnome-tweaks

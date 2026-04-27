@@ -1,4 +1,29 @@
-[legacy/profiles:/:b1dcc9dd-5262-4d8d-a863-c897e6d979b9]
+[/]
+default-show-menubar=true
+headerbar=@mb true
+theme-variant='dark'
+
+[profiles:]
+default='00e7f5c6-18ef-4cfd-aeb2-26236879b76e'
+list=['b1dcc9dd-5262-4d8d-a863-c897e6d979b9', '00e7f5c6-18ef-4cfd-aeb2-26236879b76e']
+
+[profiles:/:00e7f5c6-18ef-4cfd-aeb2-26236879b76e]
+background-color='rgb(18,18,18)'
+bold-is-bright=true
+cursor-blink-mode='off'
+cursor-shape='ibeam'
+font='JetBrains Mono 11'
+foreground-color='rgb(230,230,230)'
+padding=0
+scroll-on-keystroke=true
+scroll-on-output=false
+scrollback-lines=20000
+scrollback-unlimited=false
+use-system-font=false
+use-theme-colors=false
+visible-name='Research'
+
+[profiles:/:b1dcc9dd-5262-4d8d-a863-c897e6d979b9]
 background-transparency-percent=9
 use-theme-transparency=false
 use-transparent-background=true

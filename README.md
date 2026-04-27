@@ -9,11 +9,13 @@ This repository manages the stable parts of the environment:
 - CLI apps: `gh`, `ghostty`, `btop`
 - Editor: VS Code user settings, keybindings, and MCP config
 - Optional desktop overlay: GNOME themes, fonts, terminal tweaks, and enabled extensions
+- Colloid GTK theme for a tighter GNOME window/titlebar look
 - Local ticketing with `bd` (Beads) for repo-scoped work tracking
 
 ## Layout
 
 - `bash/`, `zsh/`, `shell/`, `fish/`: shell startup files
+- `gtk/`: user GTK overrides for titlebar and control styling
 - `git/`: public Git defaults
 - `gh/`: GitHub CLI non-secret config
 - `terminal/`: terminal app configs
@@ -99,6 +101,8 @@ Tracked `.gitconfig` intentionally excludes name and email. Store machine- or id
 
 The GNOME scripts are optional and target Ubuntu GNOME. They currently reproduce:
 
+- Colloid dark compact rimless GTK/window theme
+- Lightweight GTK overrides for cleaner titlebars and window buttons
 - Theme and icon preferences
 - Fonts and cursor theme
 - Dock settings

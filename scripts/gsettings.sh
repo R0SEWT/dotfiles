@@ -18,8 +18,8 @@ set_key() {
     fi
 }
 
-set_key org.gnome.desktop.interface gtk-theme "'Adwaita-dark'"
-set_key org.gnome.desktop.wm.preferences theme "'Adwaita-dark'"
+set_key org.gnome.desktop.interface gtk-theme "'Colloid-Dark-Compact'"
+set_key org.gnome.desktop.wm.preferences theme "'Colloid-Dark-Compact'"
 set_key org.gnome.desktop.interface icon-theme "'Papirus-Dark'"
 set_key org.gnome.desktop.interface font-name "'Inter 11'"
 set_key org.gnome.desktop.interface document-font-name "'Inter 11'"
