@@ -1,0 +1,19 @@
+# Core tooling
+stow
+curl
+git
+gh
+fish
+btop
+dconf-cli
+fzf
+zoxide
+
+# Desktop and theming
+gnome-tweaks
+gnome-shell-extensions
+papirus-icon-theme
+bibata-cursor-theme
+fonts-inter
+fonts-jetbrains-mono
+gnome-shell-extension-ubuntu-tiling-assistant

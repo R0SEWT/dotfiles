@@ -1,0 +1,16 @@
+[/]
+control-center=['<Super>s']
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/','/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/']
+home=['<Super>d']
+terminal=@as []
+www=['<Super>b']
+
+[custom-keybindings/custom0]
+binding='<Primary>Return'
+command='gnome-terminal -- fish'
+name='Fish'
+
+[custom-keybindings/custom1]
+binding='<Super>Return'
+command='gnome-terminal -- fish'
+name='Fish (Super)'

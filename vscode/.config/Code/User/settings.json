@@ -1,0 +1,11 @@
+{
+    "workbench.colorTheme": "f770dcfc-f41e-4b49-aa17-66e9ffc208fd",
+    "github.copilot.nextEditSuggestions.enabled": true,
+    "gitlens.ai.model": "vscode",
+    "gitlens.ai.vscode.model": "copilot:gpt-4.1",
+    "git-graph.date.format": "Relative",
+    "liveServer.settings.donotShowInfoMsg": true,
+    "chat.viewSessions.orientation": "stacked",
+    "terminal.integrated.initialHint": false,
+    "chat.mcp.gallery.enabled": true
+}

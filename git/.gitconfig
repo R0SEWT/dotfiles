@@ -1,0 +1,17 @@
+[include]
+	path = ~/.gitconfig.local
+
+[user]
+	useConfigOnly = true
+
+[core]
+	autocrlf = false
+	symlinks = false
+
+[credential "https://github.com"]
+	helper =
+	helper = !/usr/bin/gh auth git-credential
+
+[credential "https://gist.github.com"]
+	helper =
+	helper = !/usr/bin/gh auth git-credential
