@@ -5,6 +5,9 @@ local/
 # Editor and OS noise
 .DS_Store
 Thumbs.db
+*~
+*.bak
+*.tmp
 
 # Beads / Dolt files (added by bd init)
 .dolt/

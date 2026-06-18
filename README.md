@@ -8,6 +8,7 @@ This repository manages the stable parts of the environment:
 - Git: base config plus a private local identity overlay
 - CLI apps: `gh`, `ghostty`, `btop`
 - Editor: VS Code user settings, keybindings, and MCP config
+- Audio: EasyEffects (PipeWire) output presets for diagnostics, stabilization, and tuning
 - Optional desktop overlay: GNOME themes, fonts, terminal tweaks, and enabled extensions
 - Colloid GTK theme for a tighter GNOME window/titlebar look
 - Local ticketing with `bd` (Beads) for repo-scoped work tracking
@@ -20,11 +21,14 @@ This repository manages the stable parts of the environment:
 - `gh/`: GitHub CLI non-secret config
 - `terminal/`: terminal app configs
 - `vscode/`: VS Code user config
+- `easyeffects/`: EasyEffects output presets (PipeWire)
 - `packages/`: package lists
 - `scripts/`: bootstrap and maintenance scripts
 - `gnome/`: optional desktop exports for GNOME
 - `examples/`: local-only overlay examples
 - `.beads/`: repo-local ticket data after initialization
+- `docs/adr/`: architecture decision records
+- `.github/copilot-instructions.md`: rules and context for AI agents
 
 ## First-time setup on a new machine
 
@@ -62,6 +66,12 @@ Optional navigation tools wired into fish when installed:
 
 - `fzf`: fuzzy history/file/directory selection via the upstream fish integration
 - `zoxide`: smarter directory jumping with `z <query>` and interactive `zi`
+
+Stow a single package (for example, EasyEffects audio presets):
+
+```bash
+stow easyeffects
+```
 
 ## Task Tracking
 
@@ -108,6 +118,10 @@ The GNOME scripts are optional and target Ubuntu GNOME. They currently reproduce
 - Dock settings
 - Enabled extensions
 - GNOME Terminal transparency tweaks
+
+## Architecture & decisions
+
+See `docs/adr/` for the technical decisions behind this repo (e.g. why GNU Stow). Rules and context for AI agents live in `.github/copilot-instructions.md`.
 
 ## Notes
 
