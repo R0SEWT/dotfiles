@@ -20,18 +20,17 @@ function fish_prompt
         set prompt_symbol '#'
     end
 
-    printf '%s--%s ' $accent_color $normal
+    printf '%s╭─%s ' $accent_color $normal
     printf '%s%s%s' $path_color (prompt_pwd) $normal
 
     if test -n "$git_ref"
-        printf ' %sgit:%s%s' $accent_color $normal $git_color
-        printf '%s%s%s' $git_ref $normal $normal
+        printf ' %s·%s %s%s%s' $accent_color $normal $git_color $git_ref $normal
     end
 
     if test $last_status -ne 0
         printf ' %s[%s]%s' $status_color $last_status $normal
-        printf '\n%s%s%s ' $prompt_error_color $prompt_symbol $normal
+        printf '\n%s╰─%s %s%s%s ' $accent_color $normal $prompt_error_color $prompt_symbol $normal
     else
-        printf '\n%s%s%s ' $prompt_ok_color $prompt_symbol $normal
+        printf '\n%s╰─%s %s%s%s ' $accent_color $normal $prompt_ok_color $prompt_symbol $normal
     end
 end

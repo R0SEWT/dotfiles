@@ -21,6 +21,6 @@ function fish_right_prompt
     end
 
     if test (count $parts) -gt 0
-        printf '%s%s%s' $subtle (string join '  ' $parts) $normal
+        printf '%s%s%s' $subtle (string join ' · ' $parts) $normal
     end
 end

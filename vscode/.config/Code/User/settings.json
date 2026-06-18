@@ -7,5 +7,6 @@
     "liveServer.settings.donotShowInfoMsg": true,
     "chat.viewSessions.orientation": "stacked",
     "terminal.integrated.initialHint": false,
-    "chat.mcp.gallery.enabled": true
+    "chat.mcp.gallery.enabled": true,
+    "claudeCode.preferredLocation": "panel"
 }
