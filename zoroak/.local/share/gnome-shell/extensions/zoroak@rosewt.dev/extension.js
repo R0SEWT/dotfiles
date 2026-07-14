@@ -49,20 +49,17 @@ export default class ZoroakExtension extends Extension {
             clip_to_allocation: true,
         });
 
-        const spritePath = GLib.build_filenamev([
+        const spriteFile = Gio.File.new_for_path(GLib.build_filenamev([
             this.path,
             'sprites',
             'zoroak.png',
-        ]);
-        const spriteUri = Gio.File.new_for_path(spritePath).get_uri();
-        this._sprite = new St.Widget({
-            style_class: 'zoroak-sprite',
-            style: `background-image: url("${spriteUri}"); background-size: ${Math.round(SHEET_WIDTH * SCALE)}px ${Math.round(SHEET_HEIGHT * SCALE)}px;`,
-            visible: true,
-            opacity: 255,
-            width: Math.round(SHEET_WIDTH * SCALE),
-            height: Math.round(SHEET_HEIGHT * SCALE),
-        });
+        ]));
+        this._sprite = St.TextureCache.get_default().load_file_async(
+            spriteFile,
+            Math.round(SHEET_WIDTH * SCALE),
+            Math.round(SHEET_HEIGHT * SCALE),
+            1,
+            1.0);
         this._viewport.add_child(this._sprite);
 
         this._viewport.connect('button-press-event', (_actor, event) => {
