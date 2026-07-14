@@ -42,13 +42,24 @@ export default class ZoroakExtension extends Extension {
         this._viewport = new St.Widget({
             style_class: 'zoroak-companion',
             reactive: true,
+            visible: true,
+            opacity: 255,
             width: frameWidth,
             height: frameHeight,
             clip_to_allocation: true,
         });
 
+        const spritePath = GLib.build_filenamev([
+            this.path,
+            'sprites',
+            'zoroak.png',
+        ]);
+        const spriteUri = Gio.File.new_for_path(spritePath).get_uri();
         this._sprite = new St.Widget({
             style_class: 'zoroak-sprite',
+            style: `background-image: url("${spriteUri}"); background-size: ${Math.round(SHEET_WIDTH * SCALE)}px ${Math.round(SHEET_HEIGHT * SCALE)}px;`,
+            visible: true,
+            opacity: 255,
             width: Math.round(SHEET_WIDTH * SCALE),
             height: Math.round(SHEET_HEIGHT * SCALE),
         });
