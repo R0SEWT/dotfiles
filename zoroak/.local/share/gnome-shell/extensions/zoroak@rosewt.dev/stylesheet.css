@@ -1,0 +1,9 @@
+.zoroak-companion {
+  background-color: transparent;
+}
+
+.zoroak-sprite {
+  background-image: url("sprites/zoroak.png");
+  background-repeat: no-repeat;
+  background-color: transparent;
+}
