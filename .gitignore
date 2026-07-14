@@ -1,5 +1,7 @@
 # Local overlays and machine-specific state
 *.local
+# ...but keep the XDG `.local/` dirs that stow packages live under.
+!**/.local/
 local/
 
 # Editor and OS noise

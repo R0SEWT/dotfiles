@@ -1,0 +1,56 @@
+{
+  "_comment": "Live-tunable animation timeline. Edit and save; the running extension reloads it (no logout). Invalid JSON is ignored until fixed. Per state: row (atlas row), frames (valid frames in that row), sequence (column indices; repeat to pause, go up-and-down for ping-pong), frameMs (ms per step), loop (true=repeat, false=play once then `next`), next (state to switch to after a one-shot).",
+  "states": {
+    "idle": {
+      "row": 0, "frames": 5,
+      "sequence": [0, 0, 0, 1, 2, 3, 4, 4, 3, 2, 1],
+      "frameMs": 180, "loop": true
+    },
+    "runRight": {
+      "row": 1, "frames": 7,
+      "sequence": [0, 1, 2, 3, 4, 5, 6],
+      "frameMs": 90, "loop": true
+    },
+    "runLeft": {
+      "row": 2, "frames": 7,
+      "sequence": [0, 1, 2, 3, 4, 5, 6],
+      "frameMs": 90, "loop": true
+    },
+    "wave": {
+      "row": 3, "frames": 4,
+      "sequence": [0, 1, 2, 3, 2, 1, 0],
+      "frameMs": 120, "loop": false, "next": "idle"
+    },
+    "jump": {
+      "row": 4, "frames": 4,
+      "sequence": [0, 1, 2, 3, 2, 0],
+      "frameMs": 110, "loop": false, "next": "idle"
+    },
+    "failure": {
+      "row": 5, "frames": 7,
+      "sequence": [0, 1, 2, 3, 4, 5, 6, 6, 6],
+      "frameMs": 130, "loop": false, "next": "idle"
+    },
+    "waiting": {
+      "row": 6, "frames": 5,
+      "sequence": [0, 1, 2, 3, 4, 4, 3, 2, 1, 0, 0, 0],
+      "frameMs": 200, "loop": true
+    },
+    "working": {
+      "row": 7, "frames": 5,
+      "sequence": [0, 1, 2, 3, 4],
+      "frameMs": 140, "loop": true
+    },
+    "review": {
+      "row": 8, "frames": 5,
+      "sequence": [0, 0, 1, 2, 3, 4, 4, 3, 2, 1],
+      "frameMs": 170, "loop": true
+    }
+  },
+  "aliases": {
+    "active": "working",
+    "processing": "working",
+    "inspect": "review",
+    "roaaak": "wave"
+  }
+}

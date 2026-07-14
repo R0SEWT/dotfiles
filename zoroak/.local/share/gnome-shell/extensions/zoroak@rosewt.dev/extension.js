@@ -11,6 +11,7 @@ const CELL_WIDTH = SHEET_WIDTH / 7;
 const CELL_HEIGHT = SHEET_HEIGHT / 9;
 const SCALE = 0.9;
 const DEFAULT_FRAME_MS = 150;
+const MANIFEST_FILENAME = 'animations.json';
 
 // Timeline engine.
 //
@@ -26,7 +27,11 @@ const DEFAULT_FRAME_MS = 150;
 //
 // All timings use the existing atlas, so richer/longer animations are a config
 // change here, not an engine rewrite.
-const STATES = {
+//
+// These are the built-in fallback defaults. At runtime they are overlaid by
+// animations.json (see _loadManifest) so timings can be tuned live without a
+// shell reload.
+const DEFAULT_STATES = {
     idle: {
         row: 0, frames: 5,
         sequence: [0, 0, 0, 1, 2, 3, 4, 4, 3, 2, 1],
@@ -74,7 +79,7 @@ const STATES = {
     },
 };
 
-const ALIASES = {
+const DEFAULT_ALIASES = {
     active: 'working',
     processing: 'working',
     inspect: 'review',
@@ -86,6 +91,8 @@ export default class ZoroakExtension extends Extension {
         this._state = null;
         this._seqIndex = 0;
         this._timerId = 0;
+        this._states = DEFAULT_STATES;
+        this._aliases = DEFAULT_ALIASES;
         const frameWidth = Math.round(CELL_WIDTH * SCALE);
         const frameHeight = Math.round(CELL_HEIGHT * SCALE);
 
@@ -137,6 +144,19 @@ export default class ZoroakExtension extends Extension {
         this._stateChangedId = this._stateMonitor.connect(
             'changed', () => this._readState());
 
+        // Load the animations manifest and watch it for live edits. A save to
+        // animations.json re-applies timings without a shell reload.
+        this._manifestPath = GLib.build_filenamev([
+            this.path,
+            MANIFEST_FILENAME,
+        ]);
+        this._loadManifest();
+        this._manifestFile = Gio.File.new_for_path(this._manifestPath);
+        this._manifestMonitor = this._manifestFile.monitor_file(
+            Gio.FileMonitorFlags.NONE, null);
+        this._manifestChangedId = this._manifestMonitor.connect(
+            'changed', () => this._onManifestChanged());
+
         // Seeds the state from the runtime file and starts the timeline clock.
         this._readState();
         if (!this._state)
@@ -153,6 +173,12 @@ export default class ZoroakExtension extends Extension {
                 this._stateMonitor.disconnect(this._stateChangedId);
             this._stateMonitor.cancel();
             this._stateMonitor = null;
+        }
+        if (this._manifestMonitor) {
+            if (this._manifestChangedId)
+                this._manifestMonitor.disconnect(this._manifestChangedId);
+            this._manifestMonitor.cancel();
+            this._manifestMonitor = null;
         }
         if (this._monitorChangedId) {
             Main.layoutManager.disconnect(this._monitorChangedId);
@@ -179,8 +205,8 @@ export default class ZoroakExtension extends Extension {
                 return;
             }
 
-            const state = ALIASES[requested] ?? requested;
-            const animation = STATES[state];
+            const state = this._aliases[requested] ?? requested;
+            const animation = this._states[state];
             if (!animation)
                 return;
 
@@ -197,7 +223,7 @@ export default class ZoroakExtension extends Extension {
     }
 
     _setState(state, {restart = false} = {}) {
-        const animation = STATES[state];
+        const animation = this._states[state];
         if (!animation)
             return;
         if (state === this._state && !restart)
@@ -219,7 +245,7 @@ export default class ZoroakExtension extends Extension {
             GLib.source_remove(this._timerId);
             this._timerId = 0;
         }
-        const animation = STATES[this._state];
+        const animation = this._states[this._state];
         const delay = animation.frameMs ?? DEFAULT_FRAME_MS;
         this._timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
             this._timerId = 0;
@@ -229,7 +255,7 @@ export default class ZoroakExtension extends Extension {
     }
 
     _advanceFrame() {
-        const animation = STATES[this._state];
+        const animation = this._states[this._state];
         const sequence = this._sequenceFor(animation);
         this._seqIndex += 1;
 
@@ -248,12 +274,117 @@ export default class ZoroakExtension extends Extension {
     }
 
     _renderFrame() {
-        const animation = STATES[this._state];
+        const animation = this._states[this._state];
         const sequence = this._sequenceFor(animation);
         const column = sequence[this._seqIndex] ?? 0;
         const x = -Math.round(column * CELL_WIDTH * SCALE);
         const y = -Math.round(animation.row * CELL_HEIGHT * SCALE);
         this._sprite.set_position(x, y);
+    }
+
+    _onManifestChanged() {
+        // Editors write via truncate or temp+rename; either way we just try to
+        // reload. A failed parse (mid-save) keeps the last-good tables.
+        if (!this._loadManifest())
+            return;
+
+        // Re-apply the current animation so timing/sequence edits show up at
+        // once. If the playing state vanished from the manifest, fall to idle.
+        const current = this._state && this._states[this._state]
+            ? this._state
+            : 'idle';
+        this._setState(current, {restart: true});
+    }
+
+    _loadManifest() {
+        // Overlays animations.json (if present and valid) on the built-in
+        // defaults. Returns true only when a valid manifest was applied.
+        if (!GLib.file_test(this._manifestPath, GLib.FileTest.EXISTS))
+            return false;
+        try {
+            const [ok, bytes] = GLib.file_get_contents(this._manifestPath);
+            if (!ok)
+                return false;
+            const manifest = JSON.parse(new TextDecoder().decode(bytes));
+            return this._applyManifest(manifest);
+        } catch (error) {
+            logError(error, 'Zoroak: ignoring invalid animations.json');
+            return false;
+        }
+    }
+
+    _applyManifest(manifest) {
+        if (!manifest || typeof manifest !== 'object')
+            return false;
+        this._states = this._validateStates(manifest.states);
+        this._aliases = this._validateAliases(manifest.aliases);
+        return true;
+    }
+
+    _validateStates(raw) {
+        // Start from a copy of the defaults so a partial or broken manifest
+        // still yields a complete, safe set (idle always exists).
+        const result = {};
+        for (const [name, def] of Object.entries(DEFAULT_STATES))
+            result[name] = {...def};
+
+        if (!raw || typeof raw !== 'object')
+            return result;
+
+        for (const [name, value] of Object.entries(raw)) {
+            const clean = this._validateState(value, result[name]);
+            if (clean)
+                result[name] = clean;
+        }
+        return result;
+    }
+
+    _validateState(value, fallback) {
+        if (!value || typeof value !== 'object')
+            return fallback ?? null;
+
+        const row = Number.isInteger(value.row) ? value.row : fallback?.row;
+        const frames = Number.isInteger(value.frames) && value.frames > 0
+            ? value.frames
+            : fallback?.frames;
+        if (!Number.isInteger(row) || row < 0 || !Number.isInteger(frames))
+            return fallback ?? null;
+
+        // Keep only integer indices within [0, frames-1]; fall back to the
+        // default sequence (clamped) or a straight 0..frames-1 run.
+        let sequence = Array.isArray(value.sequence)
+            ? value.sequence.filter(i => Number.isInteger(i) && i >= 0 && i < frames)
+            : [];
+        if (sequence.length === 0 && Array.isArray(fallback?.sequence))
+            sequence = fallback.sequence.filter(i => i >= 0 && i < frames);
+        if (sequence.length === 0)
+            sequence = Array.from({length: frames}, (_, i) => i);
+
+        const frameMs = Number.isFinite(value.frameMs) && value.frameMs > 0
+            ? value.frameMs
+            : (fallback?.frameMs ?? DEFAULT_FRAME_MS);
+        const loop = typeof value.loop === 'boolean'
+            ? value.loop
+            : (fallback?.loop ?? true);
+
+        const clean = {row, frames, sequence, frameMs, loop};
+        const next = typeof value.next === 'string' && value.next
+            ? value.next
+            : fallback?.next;
+        if (typeof next === 'string' && next)
+            clean.next = next;
+        return clean;
+    }
+
+    _validateAliases(raw) {
+        const result = {...DEFAULT_ALIASES};
+        if (raw && typeof raw === 'object') {
+            for (const [key, target] of Object.entries(raw)) {
+                if (typeof target === 'string' && target)
+                    result[key] = target;
+            }
+        }
+        return result;
     }
 
     _placeAtBottomRight() {
