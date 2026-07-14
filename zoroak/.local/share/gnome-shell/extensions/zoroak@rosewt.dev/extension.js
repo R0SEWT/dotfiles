@@ -76,6 +76,8 @@ export default class ZoroakExtension extends Extension {
             GLib.get_user_runtime_dir(),
             'zoroak-state',
         ]);
+        if (!GLib.file_test(this._statePath, GLib.FileTest.EXISTS))
+            GLib.file_set_contents(this._statePath, 'idle\n');
         this._stateFile = Gio.File.new_for_path(this._statePath);
         this._stateMonitor = this._stateFile.monitor_file(
             Gio.FileMonitorFlags.NONE, null);
