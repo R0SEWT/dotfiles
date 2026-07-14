@@ -23,7 +23,13 @@ zoroakctl waiting
 zoroakctl roaaak
 ```
 
-Right-click hides the companion until the next state change.
+The companion is click-through: it never blocks clicks to the window or desktop
+beneath it. Hide or show it explicitly with:
+
+```bash
+zoroakctl hide
+zoroakctl show
+```
 
 ## Remove
 

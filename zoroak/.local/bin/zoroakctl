@@ -5,10 +5,10 @@ state="${1:-}"
 state_file="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/zoroak-state"
 
 case "$state" in
-    idle|working|review|failure|waiting|jump|wave|runRight|runLeft|roaaak)
+    idle|working|review|failure|waiting|jump|wave|runRight|runLeft|roaaak|hide|show)
         ;;
     *)
-        echo "Usage: zoroakctl {idle|working|review|failure|waiting|jump|wave|runRight|runLeft|roaaak}" >&2
+        echo "Usage: zoroakctl {idle|working|review|failure|waiting|jump|wave|runRight|runLeft|roaaak|hide|show}" >&2
         exit 2
         ;;
 esac

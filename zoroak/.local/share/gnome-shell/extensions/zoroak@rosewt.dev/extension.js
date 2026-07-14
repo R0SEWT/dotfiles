@@ -1,4 +1,3 @@
-import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
@@ -11,18 +10,68 @@ const SHEET_HEIGHT = 1332;
 const CELL_WIDTH = SHEET_WIDTH / 7;
 const CELL_HEIGHT = SHEET_HEIGHT / 9;
 const SCALE = 0.9;
-const FRAME_INTERVAL_MS = 150;
+const DEFAULT_FRAME_MS = 150;
 
+// Timeline engine.
+//
+// Each state maps to one atlas row and describes a *timeline* over that row's
+// frames rather than a plain 0..frames-1 loop:
+//   row      - atlas row (0-based) holding this state's frames
+//   frames   - number of valid frames in that row (upper bound for `sequence`)
+//   sequence - column indices played in order; repeat an index to hold/pause,
+//              go up-and-down for ping-pong. Defaults to [0..frames-1].
+//   frameMs  - dwell time per sequence step (defaults to DEFAULT_FRAME_MS)
+//   loop     - true: repeat forever; false: play once then go to `next`
+//   next     - state to switch to when a one-shot (loop:false) finishes
+//
+// All timings use the existing atlas, so richer/longer animations are a config
+// change here, not an engine rewrite.
 const STATES = {
-    idle: {row: 0, frames: 5},
-    runRight: {row: 1, frames: 7},
-    runLeft: {row: 2, frames: 7},
-    wave: {row: 3, frames: 4},
-    jump: {row: 4, frames: 4},
-    failure: {row: 5, frames: 7},
-    waiting: {row: 6, frames: 5},
-    working: {row: 7, frames: 5},
-    review: {row: 8, frames: 5},
+    idle: {
+        row: 0, frames: 5,
+        sequence: [0, 0, 0, 1, 2, 3, 4, 4, 3, 2, 1],
+        frameMs: 180, loop: true,
+    },
+    runRight: {
+        row: 1, frames: 7,
+        sequence: [0, 1, 2, 3, 4, 5, 6],
+        frameMs: 90, loop: true,
+    },
+    runLeft: {
+        row: 2, frames: 7,
+        sequence: [0, 1, 2, 3, 4, 5, 6],
+        frameMs: 90, loop: true,
+    },
+    wave: {
+        row: 3, frames: 4,
+        sequence: [0, 1, 2, 3, 2, 1, 0],
+        frameMs: 120, loop: false, next: 'idle',
+    },
+    jump: {
+        row: 4, frames: 4,
+        sequence: [0, 1, 2, 3, 2, 0],
+        frameMs: 110, loop: false, next: 'idle',
+    },
+    failure: {
+        row: 5, frames: 7,
+        sequence: [0, 1, 2, 3, 4, 5, 6, 6, 6],
+        frameMs: 130, loop: false, next: 'idle',
+    },
+    waiting: {
+        row: 6, frames: 5,
+        sequence: [0, 1, 2, 3, 4, 4, 3, 2, 1, 0, 0, 0],
+        frameMs: 200, loop: true,
+    },
+    working: {
+        row: 7, frames: 5,
+        sequence: [0, 1, 2, 3, 4],
+        frameMs: 140, loop: true,
+    },
+    review: {
+        row: 8, frames: 5,
+        sequence: [0, 0, 1, 2, 3, 4, 4, 3, 2, 1],
+        frameMs: 170, loop: true,
+    },
 };
 
 const ALIASES = {
@@ -34,14 +83,15 @@ const ALIASES = {
 
 export default class ZoroakExtension extends Extension {
     enable() {
-        this._frame = 0;
-        this._state = 'idle';
+        this._state = null;
+        this._seqIndex = 0;
+        this._timerId = 0;
         const frameWidth = Math.round(CELL_WIDTH * SCALE);
         const frameHeight = Math.round(CELL_HEIGHT * SCALE);
 
         this._viewport = new St.Widget({
             style_class: 'zoroak-companion',
-            reactive: true,
+            reactive: false,
             visible: true,
             opacity: 255,
             width: frameWidth,
@@ -62,16 +112,11 @@ export default class ZoroakExtension extends Extension {
             1.0);
         this._viewport.add_child(this._sprite);
 
-        this._viewport.connect('button-press-event', (_actor, event) => {
-            if (event.get_button() === 3) {
-                this._viewport.visible = false;
-                return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
-        });
-
+        // Click-through: keep the companion out of the shell input region so
+        // clicks reach the window/desktop underneath it. Visibility is driven
+        // by the `hide`/`show` states via zoroakctl instead of a right-click.
         Main.layoutManager.addChrome(this._viewport, {
-            affectsInputRegion: true,
+            affectsInputRegion: false,
             affectsStruts: false,
             trackFullscreen: true,
         });
@@ -92,18 +137,16 @@ export default class ZoroakExtension extends Extension {
         this._stateChangedId = this._stateMonitor.connect(
             'changed', () => this._readState());
 
+        // Seeds the state from the runtime file and starts the timeline clock.
         this._readState();
-        this._timerId = GLib.timeout_add(
-            GLib.PRIORITY_DEFAULT,
-            FRAME_INTERVAL_MS,
-            () => this._advanceFrame());
-        this._renderFrame();
+        if (!this._state)
+            this._setState('idle');
     }
 
     disable() {
         if (this._timerId) {
             GLib.source_remove(this._timerId);
-            this._timerId = null;
+            this._timerId = 0;
         }
         if (this._stateMonitor) {
             if (this._stateChangedId)
@@ -124,28 +167,91 @@ export default class ZoroakExtension extends Extension {
         try {
             const [, bytes] = GLib.file_get_contents(this._statePath);
             const requested = new TextDecoder().decode(bytes).trim();
-            const state = ALIASES[requested] ?? requested;
-            if (STATES[state] && state !== this._state) {
-                this._state = state;
-                this._frame = 0;
-                this._viewport.visible = true;
-                this._renderFrame();
+
+            if (requested === 'hide') {
+                if (this._viewport)
+                    this._viewport.visible = false;
+                return;
             }
+            if (requested === 'show') {
+                if (this._viewport)
+                    this._viewport.visible = true;
+                return;
+            }
+
+            const state = ALIASES[requested] ?? requested;
+            const animation = STATES[state];
+            if (!animation)
+                return;
+
+            if (this._viewport)
+                this._viewport.visible = true;
+
+            // A repeated one-shot request (e.g. running `zoroakctl roaaak`
+            // again) should replay from the start; a looping state already
+            // playing is left alone to avoid a visible jump.
+            this._setState(state, {restart: !animation.loop});
         } catch (_error) {
-            this._state = 'idle';
+            this._setState('idle', {restart: true});
         }
+    }
+
+    _setState(state, {restart = false} = {}) {
+        const animation = STATES[state];
+        if (!animation)
+            return;
+        if (state === this._state && !restart)
+            return;
+
+        this._state = state;
+        this._seqIndex = 0;
+        this._renderFrame();
+        this._scheduleNextFrame();
+    }
+
+    _sequenceFor(animation) {
+        return animation.sequence ??
+            Array.from({length: animation.frames}, (_, i) => i);
+    }
+
+    _scheduleNextFrame() {
+        if (this._timerId) {
+            GLib.source_remove(this._timerId);
+            this._timerId = 0;
+        }
+        const animation = STATES[this._state];
+        const delay = animation.frameMs ?? DEFAULT_FRAME_MS;
+        this._timerId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+            this._timerId = 0;
+            this._advanceFrame();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _advanceFrame() {
         const animation = STATES[this._state];
-        this._frame = (this._frame + 1) % animation.frames;
+        const sequence = this._sequenceFor(animation);
+        this._seqIndex += 1;
+
+        if (this._seqIndex >= sequence.length) {
+            if (animation.loop) {
+                this._seqIndex = 0;
+            } else {
+                // One-shot finished: hand off to the follow-up state.
+                this._setState(animation.next ?? 'idle', {restart: true});
+                return;
+            }
+        }
+
         this._renderFrame();
-        return GLib.SOURCE_CONTINUE;
+        this._scheduleNextFrame();
     }
 
     _renderFrame() {
         const animation = STATES[this._state];
-        const x = -Math.round(this._frame * CELL_WIDTH * SCALE);
+        const sequence = this._sequenceFor(animation);
+        const column = sequence[this._seqIndex] ?? 0;
+        const x = -Math.round(column * CELL_WIDTH * SCALE);
         const y = -Math.round(animation.row * CELL_HEIGHT * SCALE);
         this._sprite.set_position(x, y);
     }
