@@ -5,6 +5,7 @@ extensions=(
     "ding@rastersoft.com"
     "ubuntu-dock@ubuntu.com"
     "tiling-assistant@ubuntu.com"
+    "zoroak@rosewt.dev"
 )
 
 if ! command -v gnome-extensions >/dev/null 2>&1; then
