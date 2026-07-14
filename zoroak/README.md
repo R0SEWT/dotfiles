@@ -23,8 +23,7 @@ zoroakctl waiting
 zoroakctl roaaak
 ```
 
-Drag the companion to reposition it. Right-click hides it until the next state
-change.
+Right-click hides the companion until the next state change.
 
 ## Remove
 
