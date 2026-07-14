@@ -25,6 +25,7 @@ This repository manages the stable parts of the environment:
 - `packages/`: package lists
 - `scripts/`: bootstrap and maintenance scripts
 - `gnome/`: optional desktop exports for GNOME
+- `zoroak/`: opt-in animated GNOME Shell research companion
 - `examples/`: local-only overlay examples
 - `.beads/`: repo-local ticket data after initialization
 - `docs/adr/`: architecture decision records
