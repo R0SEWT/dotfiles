@@ -6,9 +6,9 @@ import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
-const SHEET_WIDTH = 1136;
-const SHEET_HEIGHT = 1384;
-const CELL_WIDTH = SHEET_WIDTH / 8;
+const SHEET_WIDTH = 1183;
+const SHEET_HEIGHT = 1332;
+const CELL_WIDTH = SHEET_WIDTH / 7;
 const CELL_HEIGHT = SHEET_HEIGHT / 9;
 const SCALE = 0.9;
 const FRAME_INTERVAL_MS = 150;
