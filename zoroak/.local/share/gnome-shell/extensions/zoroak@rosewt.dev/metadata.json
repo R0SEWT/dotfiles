@@ -1,0 +1,7 @@
+{
+  "uuid": "zoroak@rosewt.dev",
+  "name": "Zoroak Lab Companion",
+  "description": "A tiny research fox that reflects your current terminal state.",
+  "shell-version": ["46"],
+  "version": 1
+}
