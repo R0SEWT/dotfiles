@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+state="${1:-}"
+state_file="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/zoroak-state"
+
+case "$state" in
+    idle|working|review|failure|waiting|jump|wave|runRight|runLeft|roaaak)
+        ;;
+    *)
+        echo "Usage: zoroakctl {idle|working|review|failure|waiting|jump|wave|runRight|runLeft|roaaak}" >&2
+        exit 2
+        ;;
+esac
+
+tmp="${state_file}.tmp.$$"
+printf '%s\n' "$state" >"$tmp"
+mv "$tmp" "$state_file"
