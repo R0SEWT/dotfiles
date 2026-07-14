@@ -36,9 +36,6 @@ export default class ZoroakExtension extends Extension {
     enable() {
         this._frame = 0;
         this._state = 'idle';
-        this._dragX = 0;
-        this._dragY = 0;
-
         const frameWidth = Math.round(CELL_WIDTH * SCALE);
         const frameHeight = Math.round(CELL_HEIGHT * SCALE);
 
@@ -56,17 +53,6 @@ export default class ZoroakExtension extends Extension {
             height: Math.round(SHEET_HEIGHT * SCALE),
         });
         this._viewport.add_child(this._sprite);
-
-        const dragAction = new Clutter.DragAction();
-        dragAction.connect('drag-begin', () => {
-            [this._dragX, this._dragY] = this._viewport.get_position();
-        });
-        dragAction.connect('drag-motion', (_action, _actor, deltaX, deltaY) => {
-            this._viewport.set_position(
-                Math.round(this._dragX + deltaX),
-                Math.round(this._dragY + deltaY));
-        });
-        this._viewport.add_action(dragAction);
 
         this._viewport.connect('button-press-event', (_actor, event) => {
             if (event.get_button() === 3) {
