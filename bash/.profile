@@ -14,4 +14,6 @@ if [ -d "$HOME/.local/bin" ] ; then
     PATH="$HOME/.local/bin:$PATH"
 fi
 
-. "$HOME/.local/bin/env"
+# NO reponer aqui `. "$HOME/.local/bin/env"`: el bloque de arriba ya pone
+# ~/.local/bin en el PATH, y sourcear ese archivo dejo el equipo sin login el
+# 2026-07-28 (ver ~/INFORME-CAUSA-RAIZ-login-2026-07-28.md). uv puede recrearlo.

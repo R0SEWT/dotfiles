@@ -67,7 +67,9 @@ if ! shopt -oq posix; then
     fi
 fi
 
-. "$HOME/.local/bin/env"
+# NO reponer aqui `. "$HOME/.local/bin/env"`: ~/.local/bin ya entra al PATH mas
+# abajo, y sourcear ese archivo dejo el equipo sin login el 2026-07-28
+# (ver ~/INFORME-CAUSA-RAIZ-login-2026-07-28.md). uv puede recrearlo.
 
 if [ -x "$HOME/miniconda3/bin/conda" ]; then
     __conda_setup="$("$HOME/miniconda3/bin/conda" shell.bash hook 2>/dev/null)"
@@ -84,3 +86,23 @@ fi
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && . "$NVM_DIR/bash_completion"
+export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
+
+# --- Gas Town Integration (managed by gt) ---
+[[ -f "/home/rody/.config/gastown/shell-hook.sh" ]] && source "/home/rody/.config/gastown/shell-hook.sh"
+# --- End Gas Town ---
+
+# >>> Codex installer >>>
+export PATH="/home/rody/.local/bin:$PATH"
+# <<< Codex installer <<<
+
+# >>> Fastfetch >>>
+alias ff='fastfetch'
+[ -r "$HOME/.local/share/bash-completion/completions/fastfetch" ] && . "$HOME/.local/share/bash-completion/completions/fastfetch"
+
+# Show the system card once per interactive terminal session.
+if [[ $- == *i* ]] && [[ -z "${FASTFETCH_SHOWN:-}" ]] && command -v fastfetch >/dev/null 2>&1; then
+    export FASTFETCH_SHOWN=1
+    fastfetch
+fi
+# <<< Fastfetch <<<
