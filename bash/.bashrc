@@ -89,11 +89,11 @@ export NVM_DIR="$HOME/.nvm"
 export PATH="/usr/local/go/bin:$HOME/go/bin:$PATH"
 
 # --- Gas Town Integration (managed by gt) ---
-[[ -f "/home/rody/.config/gastown/shell-hook.sh" ]] && source "/home/rody/.config/gastown/shell-hook.sh"
+[[ -f "$HOME/.config/gastown/shell-hook.sh" ]] && source "$HOME/.config/gastown/shell-hook.sh"
 # --- End Gas Town ---
 
 # >>> Codex installer >>>
-export PATH="/home/rody/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 # <<< Codex installer <<<
 
 # >>> Fastfetch >>>
@@ -106,3 +106,6 @@ if [[ $- == *i* ]] && [[ -z "${FASTFETCH_SHOWN:-}" ]] && command -v fastfetch >/
     fastfetch
 fi
 # <<< Fastfetch <<<
+
+# Host-specific overrides (kept out of the dotfiles repo)
+[ -f "$HOME/.bashrc.local" ] && . "$HOME/.bashrc.local"
