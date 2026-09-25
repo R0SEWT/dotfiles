@@ -1,0 +1,8 @@
+[Unit]
+Description=machine-backup for profile %i
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/machine-backup %i
+Nice=10
+IOSchedulingClass=idle

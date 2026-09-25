@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# machine-backup — one-way backup of what a profile lists to an rclone remote.
+# See backup/README.md in the dotfiles repo.
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+usage: machine-backup <profile> [--dry-run]
+
+Reads ~/.config/machine-backup/<profile>.conf (see examples/machine-backup.conf.example):
+  REMOTE        rclone destination, e.g. onedrive-upc:backup/laptop
+  REPOS         git repos, bundled with all refs  → REMOTE/repos/<name>.bundle
+  ARTIFACTS     directories mirrored one-way      → REMOTE/artifacts/<name>/
+                (deleted or replaced files are kept in REMOTE/_trash/<stamp>/)
+  RCLONE_FLAGS  extra rclone flags, e.g. (--tpslimit 10) if the remote throttles
+EOF
+}
+
+die() { echo "machine-backup: $*" >&2; exit 2; }
+
+# Scratch dir for bundles; global so the EXIT trap still sees it after main returns.
+tmp=""
+cleanup() { [ -z "$tmp" ] || rm -rf -- "$tmp"; }
+trap cleanup EXIT
+
+# Paths whose contents must never leave the machine: keys, logins and sessions.
+sensitive_paths() {
+    local p
+    for p in "$HOME/.ssh" "$HOME/.gnupg" "$HOME/.config/rclone" "$HOME/.config/gh" \
+             "$HOME/.local/share/keyrings" "$HOME/.local/share/wpp-mcp" "$HOME/.local/share/aula" \
+             "$HOME"/.claude "$HOME"/.claude-* "$HOME"/.codex "$HOME"/.codex-*; do
+        [ -e "$p" ] && realpath "$p"
+    done
+    return 0
+}
+
+# A source may not be $HOME or /, sit inside a sensitive path, or contain one.
+check_source() {
+    local src="$1" s
+    if [ "$src" = / ] || [ "$src" = "$(realpath "$HOME")" ]; then
+        die "refusing to back up $src as a whole"
+    fi
+    while IFS= read -r s; do
+        case "$src/" in "$s"/*) die "refusing $src: it is (or is inside) $s" ;; esac
+        case "$s/" in "$src"/*) die "refusing $src: it contains $s" ;; esac
+    done < <(sensitive_paths)
+}
+
+main() {
+    local profile="" dry_run=() arg
+    for arg in "$@"; do
+        case "$arg" in
+            -h|--help) usage; exit 0 ;;
+            --dry-run) dry_run=(--dry-run) ;;
+            -*) usage >&2; exit 2 ;;
+            *) [ -z "$profile" ] || { usage >&2; exit 2; }; profile="$arg" ;;
+        esac
+    done
+    [[ "$profile" =~ ^[A-Za-z0-9_-]+$ ]] || { usage >&2; exit 2; }
+
+    local conf="${XDG_CONFIG_HOME:-$HOME/.config}/machine-backup/$profile.conf"
+    [ -f "$conf" ] || die "no profile at $conf (start from examples/machine-backup.conf.example)"
+    local REMOTE="" REPOS=() ARTIFACTS=() RCLONE_FLAGS=()
+    # shellcheck source=/dev/null
+    . "$conf"
+    [[ "$REMOTE" == *:* ]] || die "REMOTE must look like <remote>:<folder> in $conf"
+
+    command -v rclone >/dev/null || die "rclone is not installed (use the official installer, see README)"
+    rclone listremotes | grep -qxF "${REMOTE%%:*}:" || die "rclone has no remote '${REMOTE%%:*}:' (run rclone config)"
+
+    local share="${XDG_DATA_HOME:-$HOME/.local/share}/machine-backup"
+    local stamp; stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    # --s3-no-check-bucket: never create a bucket on an S3 remote; a new one could be public.
+    local common=(--s3-no-check-bucket "${dry_run[@]}" "${RCLONE_FLAGS[@]}")
+    local failed=0 src name
+
+    # Validate every source before touching the remote.
+    for src in "${ARTIFACTS[@]}"; do
+        [ -d "$src" ] || die "artifact directory not found: $src"
+        check_source "$(realpath "$src")"
+    done
+
+    if ((${#REPOS[@]})); then
+        tmp="$(mktemp -d)"
+        for src in "${REPOS[@]}"; do
+            name="$(basename "$src")"
+            [ ! -e "$tmp/$name.bundle" ] || die "two repos named $name: bundles would collide"
+            if git -C "$src" bundle create -q "$tmp/$name.bundle" --all \
+                && git -C "$src" bundle verify -q "$tmp/$name.bundle" 2>/dev/null; then
+                echo "bundled $src"
+            else
+                echo "machine-backup: could not bundle $src" >&2
+                rm -f -- "$tmp/$name.bundle"
+                failed=1
+            fi
+        done
+        rclone copy "$tmp" "$REMOTE/repos" "${common[@]}" || failed=1
+    fi
+
+    for src in "${ARTIFACTS[@]}"; do
+        name="$(basename "$(realpath "$src")")"
+        # _trash is a sibling of artifacts/: rclone refuses a --backup-dir inside the destination.
+        rclone sync "$src" "$REMOTE/artifacts/$name" \
+            --backup-dir "$REMOTE/_trash/$stamp/$name" \
+            --filter-from "$share/exclude.txt" "${common[@]}" || failed=1
+    done
+
+    return "$failed"
+}
+
+main "$@"
