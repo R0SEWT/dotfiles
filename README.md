@@ -22,6 +22,7 @@ This repository manages the stable parts of the environment:
 - `terminal/`: terminal app configs
 - `vscode/`: VS Code user config
 - `easyeffects/`: EasyEffects output presets (PipeWire)
+- `backup/`: one-way rclone backup (repo bundles + artifact mirror) on a systemd user timer; opt-in, see `backup/README.md`
 - `packages/`: package lists
 - `scripts/`: bootstrap and maintenance scripts
 - `gnome/`: optional desktop exports for GNOME

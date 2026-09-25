@@ -1,0 +1,23 @@
+# Copy to ~/.config/machine-backup/<profile>.conf (e.g. personal.conf). Local only: never commit it.
+# One profile per destination. Keep personal and work apart: work data only goes to a work remote.
+
+# rclone remote and folder. Create the remote first with `rclone config`.
+REMOTE="onedrive-upc:backup/$(hostname -s)"
+
+# Git repos to bundle with all their refs. Worth it for private repos and unpushed work:
+# what is already on GitHub is backed up there. Ignored files (e.g. a course's materials/)
+# are not part of a bundle.
+REPOS=(
+    # "$HOME/Code/personal/chrome-helper"
+)
+
+# Directories mirrored one-way (datasets, weights, anything outside git). Files deleted or
+# replaced locally are moved to <REMOTE>/_trash/<stamp>/ instead of being lost.
+# Filters in ~/.local/share/machine-backup/exclude.txt always apply.
+ARTIFACTS=(
+    # "$HOME/Data/thesis"
+)
+
+# Extra rclone flags. Add throttling only if the remote answers HTTP 429, e.g.:
+# RCLONE_FLAGS=(--tpslimit 10)
+RCLONE_FLAGS=()

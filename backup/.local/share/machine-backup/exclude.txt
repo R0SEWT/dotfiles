@@ -1,0 +1,31 @@
+# machine-backup: rclone filter rules applied to every ARTIFACTS directory.
+# Anything matched here is never uploaded, whatever directory it sits in.
+
+# Credentials and sessions
+- .env
+- .env.*
+- .netrc
+- .git-credentials
+- .credentials.json
+- .beads-credential-key
+- *.pem
+- *.key
+- *.p12
+- id_rsa*
+- id_ed25519*
+- .wwebjs_auth/**
+- .wwebjs_cache/**
+
+# Rebuildable, or backed up another way
+- .git/**
+- .venv/**
+- node_modules/**
+- __pycache__/**
+- .pytest_cache/**
+- .ruff_cache/**
+- .cache/**
+- *.parcial
+
+# Course material from UPC's Aula Virtual: it has its own private backup
+# (`aula respaldo` in chrome-helper) and must not be copied anywhere else.
+- materials/**
