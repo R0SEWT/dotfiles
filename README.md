@@ -22,6 +22,7 @@ This repository manages the stable parts of the environment:
 - `terminal/`: terminal app configs
 - `vscode/`: VS Code user config
 - `easyeffects/`: EasyEffects output presets (PipeWire)
+- `ai-accounts/`: opt-in `claude-as` / `codex-as` / `ai-cuota` account rotation for Claude Code and Codex
 - `packages/`: package lists
 - `scripts/`: bootstrap and maintenance scripts
 - `gnome/`: optional desktop exports for GNOME

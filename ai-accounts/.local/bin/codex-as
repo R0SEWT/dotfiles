@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# codex-as <perfil> [args de codex...]
+#   Abre Codex CLI con otra cuenta de ChatGPT. Cada perfil tiene su propio
+#   login (auth.json) y estado local (sqlite, historial), pero comparte con
+#   ~/.codex por symlink config.toml, AGENTS.md, hooks, plugins, rules y skills.
+#
+#   codex-as list            estado de login de cada perfil
+#   codex-as status          cuota libre (Session/Weekly) de cada perfil
+#   codex-as auto ...        abre la cuenta con más margen (prefiere la por defecto)
+#   codex-as link <perfil>   (re)crea los symlinks compartidos
+#   codex-as <perfil> ...    ejecuta `codex ...` con esa cuenta
+set -euo pipefail
+
+MAIN="$HOME/.codex"
+declare -A DIRS=(
+  [team]="$MAIN"                      # Codex principal · Team (por defecto)
+  [secondary]="$HOME/.codex-secondary" # ChatGPT secundario · Plus
+)
+SHARED=(config.toml AGENTS.md hooks.json plugins rules skills)
+
+die() { echo "codex-as: $*" >&2; exit 1; }
+
+profile_dir() {
+  [[ -n "${DIRS[$1]:-}" ]] || die "perfil desconocido '$1' (perfiles: ${!DIRS[*]})"
+  echo "${DIRS[$1]}"
+}
+
+link_shared() {
+  local dir="$1" mode="${2:-}" item src dst backup=""
+  [[ "$dir" == "$MAIN" ]] && return 0
+  mkdir -p "$dir"
+  for item in "${SHARED[@]}"; do
+    src="$MAIN/$item"; dst="$dir/$item"
+    [[ -e "$src" ]] || continue
+    if [[ -L "$dst" ]]; then
+      [[ "$(readlink "$dst")" == "$src" ]] && continue
+      rm "$dst"
+    elif [[ -e "$dst" ]]; then
+      if [[ "$mode" != "--migrate" ]]; then
+        echo "codex-as: $dst es una copia propia; ejecuta 'codex-as link <perfil>' para compartirla" >&2
+        continue
+      fi
+      backup="${backup:-$dir/backups/pre-shared-$(date +%Y%m%d-%H%M%S)}"
+      mkdir -p "$backup"
+      mv "$dst" "$backup/"
+      echo "  respaldo: $item -> $backup/"
+    fi
+    ln -s "$src" "$dst"
+    echo "  enlazado: $dst -> $src"
+  done
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  ""|-h|--help)
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
+    echo "perfiles: ${!DIRS[*]}"
+    ;;
+  list)
+    for p in team secondary; do
+      dir="${DIRS[$p]}"
+      st="$(CODEX_HOME="$dir" codex login status 2>&1 | head -1 || true)"
+      printf '%-10s %-32s %s\n' "$p" "$st" "$dir"
+    done
+    ;;
+  status)
+    exec ai-cuota status codex
+    ;;
+  auto)
+    shift
+    profile="$(ai-cuota pick codex)" || die "no pude calcular la cuota; usa un perfil explícito"
+    exec "$0" "$profile" "$@"
+    ;;
+  link)
+    [[ -n "${2:-}" ]] || die "uso: codex-as link <perfil>"
+    link_shared "$(profile_dir "$2")" --migrate
+    ;;
+  *)
+    dir="$(profile_dir "$cmd")"; shift
+    if [[ "$dir" == "$MAIN" ]]; then
+      exec env -u CODEX_HOME codex "$@"
+    fi
+    link_shared "$dir"
+    CODEX_HOME="$dir" exec codex "$@"
+    ;;
+esac

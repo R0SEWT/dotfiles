@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# claude-as <perfil> [args de claude...]
+#   Abre Claude Code CLI con otra cuenta. Cada perfil tiene su propio login
+#   (.credentials.json, .claude.json), pero comparte con ~/.claude por symlink
+#   la memoria y transcripts (projects/), plugins, skills, settings.json, etc.,
+#   así _hub y los demás repos ven lo mismo con cualquier cuenta.
+#
+#   claude-as list            estado de login de cada perfil
+#   claude-as status          cuota libre (Session/Weekly) de cada perfil
+#   claude-as auto ...        abre la cuenta con más margen (prefiere la por defecto)
+#   claude-as link <perfil>   (re)crea los symlinks compartidos
+#   claude-as <perfil> ...    ejecuta `claude ...` con esa cuenta
+set -euo pipefail
+
+MAIN="$HOME/.claude"
+declare -A DIRS=(
+  [cip]="$MAIN"                       # CIP AI Agent · Team 5x (por defecto)
+  [rody]="$HOME/.claude-account-2"    # Work Rody · Team
+  [personal]="$HOME/.claude-personal" # Personal · Pro
+)
+SHARED=(projects plugins skills agents commands hooks settings.json CLAUDE.md keybindings.json)
+
+die() { echo "claude-as: $*" >&2; exit 1; }
+
+profile_dir() {
+  [[ -n "${DIRS[$1]:-}" ]] || die "perfil desconocido '$1' (perfiles: ${!DIRS[*]})"
+  echo "${DIRS[$1]}"
+}
+
+# Enlaza lo compartido. Con --migrate mueve copias reales previas a backups/.
+link_shared() {
+  local dir="$1" mode="${2:-}" item src dst backup=""
+  [[ "$dir" == "$MAIN" ]] && return 0
+  mkdir -p "$dir"
+  for item in "${SHARED[@]}"; do
+    src="$MAIN/$item"; dst="$dir/$item"
+    [[ -e "$src" ]] || continue
+    if [[ -L "$dst" ]]; then
+      [[ "$(readlink "$dst")" == "$src" ]] && continue
+      rm "$dst"
+    elif [[ -e "$dst" ]]; then
+      if [[ "$mode" != "--migrate" ]]; then
+        echo "claude-as: $dst es una copia propia; ejecuta 'claude-as link <perfil>' para compartirla" >&2
+        continue
+      fi
+      backup="${backup:-$dir/backups/pre-shared-$(date +%Y%m%d-%H%M%S)}"
+      mkdir -p "$backup"
+      mv "$dst" "$backup/"
+      echo "  respaldo: $item -> $backup/"
+    fi
+    ln -s "$src" "$dst"
+    echo "  enlazado: $dst -> $src"
+  done
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  ""|-h|--help)
+    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    echo "perfiles: ${!DIRS[*]}"
+    ;;
+  list)
+    for p in cip rody personal; do
+      dir="${DIRS[$p]}"
+      if [[ "$dir" == "$MAIN" ]]; then st="$(env -u CLAUDE_CONFIG_DIR claude auth status 2>/dev/null || true)"
+      else st="$(CLAUDE_CONFIG_DIR="$dir" claude auth status 2>/dev/null || true)"; fi
+      python3 - "$p" "$dir" "$st" <<'EOF'
+import json, sys
+p, d, raw = sys.argv[1:]
+try: s = json.loads(raw)
+except Exception: s = {}
+who = s.get("email") or "-"
+state = "ok" if s.get("loggedIn") else "SIN LOGIN"
+print(f"{p:<9} {state:<10} {who:<32} {d}")
+EOF
+    done
+    ;;
+  status)
+    exec ai-cuota status claude
+    ;;
+  auto)
+    shift
+    profile="$(ai-cuota pick claude)" || die "no pude calcular la cuota; usa un perfil explícito"
+    exec "$0" "$profile" "$@"
+    ;;
+  link)
+    [[ -n "${2:-}" ]] || die "uso: claude-as link <perfil>"
+    link_shared "$(profile_dir "$2")" --migrate
+    ;;
+  *)
+    dir="$(profile_dir "$cmd")"; shift
+    if [[ "$dir" == "$MAIN" ]]; then
+      exec env -u CLAUDE_CONFIG_DIR claude "$@"
+    fi
+    link_shared "$dir"
+    CLAUDE_CONFIG_DIR="$dir" exec claude "$@"
+    ;;
+esac
