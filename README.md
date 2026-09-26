@@ -9,6 +9,9 @@ Actualmente este repositorio incluye:
 - **[EasyEffects](./easyeffects/)**: Presets orientados al diagnóstico, estabilización y compensación de sistemas de audio (PipeWire).
 - **[Windows VM](./windows-vm/)**: Script y configuración base para levantar una VM local de Windows con QEMU/KVM y `swtpm`.
 - **[AI accounts](./ai-accounts/)**: `claude-as` / `codex-as` / `ai-cuota` para rotar cuentas de Claude Code y Codex.
+- **[Hyprland](./hypr/)**: config en Lua (`hyprland.lua` + `lua/`, Hyprland ≥ 0.56) sobre los dots de KooL, más los scripts de KooL adaptados a ella. Los `.conf` quedan solo como vuelta atrás.
+- **[Wallust](./wallust/)**: `wallust.toml` y plantillas de colores; genera `~/.config/hypr/wallust/colors.lua` para Hyprland.
+- **[Waybar](./waybar/)** / **[SwayNC](./swaync/)**: solo los archivos que llaman a `hyprctl dispatch` (sintaxis Lua); el resto sigue siendo de KooL sin versionar.
 
 *(Aquí puedes añadir más en el futuro: bash/zsh, nvim, git, tmux, etc.)*
 
