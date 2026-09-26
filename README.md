@@ -7,6 +7,7 @@ Este repositorio contiene mis archivos de configuración personales para sistema
 Actualmente este repositorio incluye:
 
 - **[EasyEffects](./easyeffects/)**: Presets orientados al diagnóstico, estabilización y compensación de sistemas de audio (PipeWire).
+- **[Windows VM](./windows-vm/)**: Script y configuración base para levantar una VM local de Windows con QEMU/KVM y `swtpm`.
 
 *(Aquí puedes añadir más en el futuro: bash/zsh, nvim, git, tmux, etc.)*
 
@@ -31,6 +32,12 @@ Para enlazar una configuración concreta (por ejemplo, `easyeffects`), simplemen
 
 ```bash
 stow easyeffects
+```
+
+Para instalar el lanzador de la VM de Windows:
+
+```bash
+stow windows-vm
 ```
 
 Esto creará automáticamente los symlinks necesarios en la estructura de tu directorio home/configuración.

@@ -1,0 +1,11 @@
+body {
+  --line-height-normal: 1.75;
+  --max-width: 720px;
+  --font-text-size: 17px;
+  letter-spacing: 0.01em;
+}
+
+.markdown-preview-view,
+.markdown-source-view .cm-content {
+  font-variant-ligatures: common-ligatures;
+}
