@@ -1,0 +1,358 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/windows-vm"
+CONFIG_FILE="${WINDOWS_VM_CONFIG:-${CONFIG_DIR}/windows-vm.env}"
+EXAMPLE_CONFIG_FILE="${CONFIG_DIR}/windows-vm.env.example"
+
+VM_NAME="${VM_NAME:-windows10}"
+VM_DIR="${VM_DIR:-${HOME}/VMs/${VM_NAME}}"
+DISK_PATH="${DISK_PATH:-${VM_DIR}/${VM_NAME}.qcow2}"
+DISK_SIZE_GB="${DISK_SIZE_GB:-80}"
+WINDOWS_ISO="${WINDOWS_ISO:-}"
+VIRTIO_ISO="${VIRTIO_ISO:-}"
+OVMF_CODE="${OVMF_CODE:-/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd}"
+OVMF_VARS_TEMPLATE="${OVMF_VARS_TEMPLATE:-/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd}"
+OVMF_VARS_PATH="${OVMF_VARS_PATH:-${VM_DIR}/${VM_NAME}-OVMF_VARS.fd}"
+TPM_DIR="${TPM_DIR:-${VM_DIR}/tpm}"
+TPM_SOCKET="${TPM_SOCKET:-${VM_DIR}/swtpm.sock}"
+TPM_PIDFILE="${TPM_PIDFILE:-${VM_DIR}/swtpm.pid}"
+RAM_MB="${RAM_MB:-8192}"
+CPU_CORES="${CPU_CORES:-4}"
+DISPLAY_BACKEND="${DISPLAY_BACKEND:-gtk}"
+DISK_BUS="${DISK_BUS:-sata}"
+NET_DEVICE="${NET_DEVICE:-e1000e}"
+DOCTOR_FAILS=0
+DOCTOR_WARNS=0
+
+load_config() {
+  if [[ -f "${CONFIG_FILE}" ]]; then
+    # shellcheck disable=SC1090
+    source "${CONFIG_FILE}"
+  fi
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+create_layout() {
+  mkdir -p "${VM_DIR}" "${TPM_DIR}"
+
+  if [[ ! -f "${DISK_PATH}" ]]; then
+    qemu-img create -f qcow2 "${DISK_PATH}" "${DISK_SIZE_GB}G"
+  fi
+
+  if [[ ! -f "${OVMF_VARS_PATH}" ]]; then
+    cp -f "${OVMF_VARS_TEMPLATE}" "${OVMF_VARS_PATH}"
+  fi
+}
+
+start_tpm() {
+  mkdir -p "${TPM_DIR}"
+  stop_tpm
+  rm -f "${TPM_SOCKET}"
+  rm -f "${TPM_DIR}/.lock"
+  swtpm socket \
+    --tpm2 \
+    --tpmstate "dir=${TPM_DIR}" \
+    --ctrl "type=unixio,path=${TPM_SOCKET},terminate" \
+    --pid "file=${TPM_PIDFILE}" \
+    --daemon
+}
+
+stop_tpm() {
+  if [[ -f "${TPM_PIDFILE}" ]]; then
+    local pid
+    pid="$(cat "${TPM_PIDFILE}" 2>/dev/null || true)"
+    if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
+      kill "${pid}" 2>/dev/null || true
+      sleep 1
+      if kill -0 "${pid}" 2>/dev/null; then
+        kill -9 "${pid}" 2>/dev/null || true
+      fi
+    fi
+    rm -f "${TPM_PIDFILE}"
+  fi
+
+  rm -f "${TPM_SOCKET}"
+}
+
+require_file() {
+  local path="$1"
+  local label="$2"
+
+  if [[ ! -f "${path}" ]]; then
+    echo "Missing ${label}: ${path}" >&2
+    exit 1
+  fi
+}
+
+ensure_config() {
+  if [[ ! -f "${CONFIG_FILE}" ]]; then
+    cat <<EOF >&2
+Missing config file: ${CONFIG_FILE}
+
+Bootstrap:
+  mkdir -p "${CONFIG_DIR}"
+  cp "${EXAMPLE_CONFIG_FILE}" "${CONFIG_FILE}"
+  ${0##*/} doctor
+  ${0##*/} create
+  ${0##*/} install
+EOF
+    exit 1
+  fi
+}
+
+doctor_ok() {
+  printf '[OK] %s\n' "$1"
+}
+
+doctor_warn() {
+  DOCTOR_WARNS=$((DOCTOR_WARNS + 1))
+  printf '[WARN] %s\n' "$1"
+}
+
+doctor_fail() {
+  DOCTOR_FAILS=$((DOCTOR_FAILS + 1))
+  printf '[FAIL] %s\n' "$1"
+}
+
+check_cmd() {
+  local cmd="$1"
+  if command -v "${cmd}" >/dev/null 2>&1; then
+    doctor_ok "command present: ${cmd}"
+  else
+    doctor_fail "missing command: ${cmd}"
+  fi
+}
+
+check_file() {
+  local path="$1"
+  local label="$2"
+  if [[ -f "${path}" ]]; then
+    doctor_ok "${label}: ${path}"
+  else
+    doctor_fail "${label} missing: ${path}"
+  fi
+}
+
+check_optional_file() {
+  local path="$1"
+  local label="$2"
+  if [[ -z "${path}" ]]; then
+    doctor_warn "${label} not configured"
+  elif [[ -f "${path}" ]]; then
+    doctor_ok "${label}: ${path}"
+  else
+    doctor_fail "${label} missing: ${path}"
+  fi
+}
+
+doctor() {
+  local groups_line space_line avail_gb base_dir
+
+  load_config
+
+  echo "windows-vm doctor"
+  echo "config: ${CONFIG_FILE}"
+  echo "vm: ${VM_NAME}"
+  echo
+
+  if [[ -f "${CONFIG_FILE}" ]]; then
+    doctor_ok "config file present"
+  else
+    doctor_fail "config file missing"
+    if [[ -f "${EXAMPLE_CONFIG_FILE}" ]]; then
+      doctor_ok "example config present: ${EXAMPLE_CONFIG_FILE}"
+    else
+      doctor_fail "example config missing: ${EXAMPLE_CONFIG_FILE}"
+    fi
+  fi
+
+  check_cmd qemu-system-x86_64
+  check_cmd qemu-img
+  check_cmd swtpm
+
+  if [[ -e /dev/kvm ]]; then
+    if [[ -r /dev/kvm && -w /dev/kvm ]]; then
+      doctor_ok "/dev/kvm present and accessible"
+    else
+      doctor_fail "/dev/kvm present but not accessible to current user"
+    fi
+  else
+    doctor_fail "/dev/kvm missing"
+  fi
+
+  groups_line="$(id -nG 2>/dev/null || true)"
+  if [[ " ${groups_line} " == *" kvm "* ]]; then
+    doctor_ok "user belongs to kvm group"
+  else
+    doctor_warn "user not in kvm group"
+  fi
+
+  if [[ " ${groups_line} " == *" libvirt "* ]]; then
+    doctor_ok "user belongs to libvirt group"
+  else
+    doctor_warn "user not in libvirt group"
+  fi
+
+  check_file "${OVMF_CODE}" "OVMF code"
+  check_file "${OVMF_VARS_TEMPLATE}" "OVMF vars template"
+  check_optional_file "${WINDOWS_ISO}" "Windows ISO"
+  check_optional_file "${VIRTIO_ISO}" "VirtIO ISO"
+
+  if mkdir -p "${VM_DIR}" "${TPM_DIR}" 2>/dev/null; then
+    doctor_ok "VM and TPM directories writable"
+  else
+    doctor_fail "cannot create VM and TPM directories under ${VM_DIR}"
+  fi
+
+  base_dir="${VM_DIR}"
+  if [[ ! -d "${base_dir}" ]]; then
+    base_dir="${HOME}"
+  fi
+  space_line="$(df -BG --output=avail "${base_dir}" 2>/dev/null | tail -n 1 | tr -dc '0-9')"
+  if [[ -n "${space_line}" ]]; then
+    avail_gb="${space_line}"
+    if (( avail_gb >= DISK_SIZE_GB + 20 )); then
+      doctor_ok "free space looks sufficient: ${avail_gb}G available for ${DISK_SIZE_GB}G disk"
+    elif (( avail_gb >= 40 )); then
+      doctor_warn "free space is tight: ${avail_gb}G available for ${DISK_SIZE_GB}G disk"
+    else
+      doctor_fail "free space too low: ${avail_gb}G available"
+    fi
+  else
+    doctor_warn "could not determine free space for ${base_dir}"
+  fi
+
+  echo
+  echo "summary: ${DOCTOR_FAILS} fail, ${DOCTOR_WARNS} warn"
+  if (( DOCTOR_FAILS > 0 )); then
+    return 1
+  fi
+}
+
+run_qemu() {
+  local mode="$1"
+  local -a args
+
+  ensure_config
+  load_config
+  create_layout
+  start_tpm
+  trap stop_tpm EXIT
+
+  args=(
+    -name "${VM_NAME}"
+    -enable-kvm
+    -machine q35,accel=kvm
+    -cpu host
+    -smp "${CPU_CORES}"
+    -m "${RAM_MB}"
+    -display "${DISPLAY_BACKEND}"
+    -boot menu=on
+    -rtc base=localtime,clock=host
+    -device ich9-intel-hda
+    -device ich9-ahci,id=sata
+    -device hda-duplex
+    -device usb-ehci
+    -device usb-tablet
+    -drive "if=pflash,format=raw,readonly=on,file=${OVMF_CODE}"
+    -drive "if=pflash,format=raw,file=${OVMF_VARS_PATH}"
+    -chardev "socket,id=chrtpm,path=${TPM_SOCKET}"
+    -tpmdev "emulator,id=tpm0,chardev=chrtpm"
+    -device tpm-tis,tpmdev=tpm0
+    -drive "file=${DISK_PATH},if=none,id=systemdisk,format=qcow2"
+    -netdev user,id=net0
+  )
+
+  case "${DISK_BUS}" in
+    sata)
+      args+=(-device "ide-hd,bus=sata.2,drive=systemdisk")
+      ;;
+    virtio)
+      args+=(-device virtio-blk-pci,drive=systemdisk)
+      args+=(-device virtio-balloon-pci)
+      ;;
+    *)
+      echo "Unsupported DISK_BUS: ${DISK_BUS}" >&2
+      return 1
+      ;;
+  esac
+
+  case "${NET_DEVICE}" in
+    e1000|e1000e|rtl8139|virtio-net-pci)
+      args+=(-device "${NET_DEVICE},netdev=net0")
+      ;;
+    *)
+      echo "Unsupported NET_DEVICE: ${NET_DEVICE}" >&2
+      return 1
+      ;;
+  esac
+
+  if [[ "${mode}" == "install" ]]; then
+    require_file "${WINDOWS_ISO}" "Windows ISO"
+    args+=(
+      -drive "file=${WINDOWS_ISO},if=none,id=winiso,media=cdrom,format=raw,readonly=on"
+      -device "ide-cd,bus=sata.0,drive=winiso"
+    )
+    if [[ -n "${VIRTIO_ISO}" && -f "${VIRTIO_ISO}" ]]; then
+      args+=(
+        -drive "file=${VIRTIO_ISO},if=none,id=virtiocd,media=cdrom,format=raw,readonly=on"
+        -device "ide-cd,bus=sata.1,drive=virtiocd"
+      )
+    fi
+  fi
+
+  qemu-system-x86_64 "${args[@]}"
+  stop_tpm
+  trap - EXIT
+}
+
+usage() {
+  cat <<EOF
+Usage: ${0##*/} <create|install|start>
+
+Commands:
+  doctor   Validate KVM access, groups, ISOs, OVMF, TPM, and free space
+  create   Create the qcow2 disk, TPM state, and writable OVMF vars file
+  install  Boot from the Windows ISO for first install
+  start    Boot the existing VM disk
+EOF
+}
+
+main() {
+  case "${1:-start}" in
+    doctor)
+      doctor
+      ;;
+    create)
+      ensure_config
+      load_config
+      require_cmd qemu-img
+      create_layout
+      ;;
+    install)
+      require_cmd qemu-system-x86_64
+      require_cmd qemu-img
+      require_cmd swtpm
+      run_qemu install
+      ;;
+    start)
+      require_cmd qemu-system-x86_64
+      require_cmd qemu-img
+      require_cmd swtpm
+      run_qemu start
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

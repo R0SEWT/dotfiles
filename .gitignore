@@ -11,3 +11,4 @@
 # Local credentials: commit only redacted example files.
 **/secrets.zsh
 **/*.local.zsh
+**/windows-vm.env
