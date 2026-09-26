@@ -12,9 +12,11 @@ Subcomandos comunes: `list` (estado de login), `status` (cuota Session/Weekly), 
 
 ## Instalación
 
+Desde la raíz del repo, en cualquier rama `host/*`:
+
 ```bash
 mkdir -p ~/.local/bin
-./scripts/stow.sh ai-accounts
+stow --target="$HOME" ai-accounts
 ```
 
 Requiere `bash` ≥ 4, `python3`, `claude` y/o `codex` en el `PATH`, y `~/.local/bin` en el `PATH`.
