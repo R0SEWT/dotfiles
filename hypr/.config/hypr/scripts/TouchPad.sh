@@ -1,32 +1,33 @@
 #!/bin/bash
 # /* ---- 💫 https://github.com/JaKooLit 💫 ---- */  ##
 # For disabling touchpad.
-# Edit the Touchpad_Device on ~/.config/hypr/UserConfigs/Laptops.conf according to your system
-# use hyprctl devices to get your system touchpad device name
-# source https://github.com/hyprwm/Hyprland/discussions/4283?sort=new#discussioncomment-8648109
+# Lua config (Hyprland >= 0.56): toggles the device via `hyprctl eval`.
+# Device name must match `touchpad` in ~/.config/hypr/lua/vars.lua
 
 notif="$HOME/.config/swaync/images/ja.png"
+TOUCHPAD_DEVICE="dell099f:00-044e:120a-touchpad"
 
 export STATUS_FILE="$XDG_RUNTIME_DIR/touchpad.status"
 
+set_touchpad() {
+	printf "%s" "$1" >"$STATUS_FILE"
+	hyprctl eval "hl.device({ name = \"$TOUCHPAD_DEVICE\", enabled = $1 })"
+}
+
 enable_touchpad() {
-    printf "true" >"$STATUS_FILE"
-    notify-send -u low -i $notif  " Enabling" " touchpad"
-    hyprctl keyword '$TOUCHPAD_ENABLED' "true" -r
+	notify-send -u low -i $notif " Enabling" " touchpad"
+	set_touchpad true
 }
 
 disable_touchpad() {
-    printf "false" >"$STATUS_FILE"
-    notify-send -u low -i $notif " Disabling" " touchpad"
-    hyprctl keyword '$TOUCHPAD_ENABLED' "false" -r
+	notify-send -u low -i $notif " Disabling" " touchpad"
+	set_touchpad false
 }
 
 if ! [ -f "$STATUS_FILE" ]; then
-  enable_touchpad
-else
-  if [ $(cat "$STATUS_FILE") = "true" ]; then
-    disable_touchpad
-  elif [ $(cat "$STATUS_FILE") = "false" ]; then
-    enable_touchpad
-  fi
+	enable_touchpad
+elif [ "$(cat "$STATUS_FILE")" = "true" ]; then
+	disable_touchpad
+elif [ "$(cat "$STATUS_FILE")" = "false" ]; then
+	enable_touchpad
 fi
