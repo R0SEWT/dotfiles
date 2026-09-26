@@ -8,6 +8,7 @@ Actualmente este repositorio incluye:
 
 - **[EasyEffects](./easyeffects/)**: Presets orientados al diagnóstico, estabilización y compensación de sistemas de audio (PipeWire).
 - **[Windows VM](./windows-vm/)**: Script y configuración base para levantar una VM local de Windows con QEMU/KVM y `swtpm`.
+- **[AI accounts](./ai-accounts/)**: `claude-as` / `codex-as` / `ai-cuota` para rotar cuentas de Claude Code y Codex.
 
 *(Aquí puedes añadir más en el futuro: bash/zsh, nvim, git, tmux, etc.)*
 

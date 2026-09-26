@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""ai-cuota — cuota libre de cada perfil de claude-as / codex-as.
+
+  ai-cuota status claude|codex       tabla Session / Weekly libres por perfil
+  ai-cuota pick   claude|codex       imprime el perfil a usar (para `auto`)
+
+Fuentes, en orden:
+  1. API de uso con el access token del propio perfil (solo lectura; nunca
+     refresca tokens, así no invalida sesiones de la CLI ni de CrossUsage).
+  2. Si el token del perfil está vencido: caché de CrossUsage, si tiene menos
+     de 30 min y no es una copia de la cuenta base (CrossUsage cae a la base
+     cuando falla la cuenta secundaria).
+
+Elección: margen = min(Session libre, Weekly libre). Se prefiere la cuenta por
+defecto (cip / team) mientras su margen sea >= PREFER_MIN; si no, la de mayor
+margen. Los perfiles deben coincidir con los de claude-as y codex-as.
+"""
+import base64
+import json
+import os
+import sys
+import time
+import urllib.request
+from datetime import datetime, timezone
+
+HOME = os.path.expanduser("~")
+PREFER_MIN = 20.0
+CACHE_MAX_AGE_S = 30 * 60
+CROSSUSAGE_CACHE = f"{HOME}/.local/share/com.barramee27.crossusage/usage-api-cache.json"
+
+# perfil -> (directorio, instancia de CrossUsage). El primero es el preferido.
+PROFILES = {
+    "claude": [
+        ("cip", f"{HOME}/.claude", "claude"),
+        ("rody", f"{HOME}/.claude-account-2", "claude:work-rody"),
+        ("personal", f"{HOME}/.claude-personal", "claude:personal"),
+    ],
+    "codex": [
+        ("team", f"{HOME}/.codex", "codex"),
+        ("secondary", f"{HOME}/.codex-secondary", "codex:secondary"),
+    ],
+}
+
+
+def http_json(url, headers):
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def jwt_exp(token):
+    try:
+        seg = token.split(".")[1]
+        seg += "=" * (-len(seg) % 4)
+        return json.loads(base64.urlsafe_b64decode(seg)).get("exp")
+    except Exception:
+        return None
+
+
+def reset_in(iso_or_epoch):
+    if iso_or_epoch is None:
+        return None
+    try:
+        if isinstance(iso_or_epoch, (int, float)):
+            ts = float(iso_or_epoch)
+        else:
+            ts = datetime.fromisoformat(str(iso_or_epoch).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+    secs = max(0, int(ts - time.time()))
+    d, rem = divmod(secs, 86400)
+    h, m = divmod(rem // 60, 60)
+    return f"{d}d {h}h" if d else f"{h}h {m:02d}m"
+
+
+def live_claude(dir_):
+    oauth = json.load(open(f"{dir_}/.credentials.json")).get("claudeAiOauth") or {}
+    token = oauth.get("accessToken")
+    if not token or (oauth.get("expiresAt") or 0) / 1000 < time.time() + 60:
+        return None
+    data = http_json(
+        "https://api.anthropic.com/api/oauth/usage",
+        {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "anthropic-beta": "oauth-2025-04-20",
+            "User-Agent": "claude-code/ai-cuota",
+        },
+    )
+    fh, sd = data.get("five_hour") or {}, data.get("seven_day") or {}
+    return {
+        "session_used": fh.get("utilization"),
+        "weekly_used": sd.get("utilization"),
+        "session_reset": fh.get("resets_at"),
+        "weekly_reset": sd.get("resets_at"),
+    }
+
+
+def live_codex(dir_):
+    tokens = json.load(open(f"{dir_}/auth.json")).get("tokens") or {}
+    token = tokens.get("access_token")
+    if not token or (jwt_exp(token) or 0) < time.time() + 60:
+        return None
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json", "User-Agent": "ai-cuota"}
+    if tokens.get("account_id"):
+        headers["ChatGPT-Account-Id"] = tokens["account_id"]
+    rl = http_json("https://chatgpt.com/backend-api/wham/usage", headers).get("rate_limit") or {}
+    pw, sw = rl.get("primary_window") or {}, rl.get("secondary_window") or {}
+    return {
+        "session_used": pw.get("used_percent"),
+        "weekly_used": sw.get("used_percent"),
+        "session_reset": pw.get("reset_at"),
+        "weekly_reset": sw.get("reset_at"),
+    }
+
+
+def cached(instance, base_instance):
+    try:
+        snaps = json.load(open(CROSSUSAGE_CACHE))["snapshots"]
+    except (OSError, ValueError, KeyError):
+        return None, "sin caché"
+    snap = snaps.get(instance)
+    if not snap:
+        return None, "sin caché"
+    age = time.time() - datetime.fromisoformat(snap["fetchedAt"][:26].rstrip("Z") + "+00:00").timestamp()
+    if age > CACHE_MAX_AGE_S:
+        return None, f"caché vieja ({int(age // 60)} min)"
+
+    def pick(s):
+        lines = {l.get("label"): l for l in s.get("lines", [])}
+        return lines.get("Session") or {}, lines.get("Weekly") or {}
+
+    ses, wk = pick(snap)
+    if instance != base_instance and base_instance in snaps and pick(snaps[base_instance]) == (ses, wk):
+        return None, "caché inválida (CrossUsage muestra la cuenta base)"
+    return {
+        "session_used": ses.get("used"),
+        "weekly_used": wk.get("used"),
+        "session_reset": ses.get("resetsAt"),
+        "weekly_reset": wk.get("resetsAt"),
+    }, f"caché CrossUsage ({int(age // 60)} min)"
+
+
+def collect(tool):
+    live = live_claude if tool == "claude" else live_codex
+    base_instance = PROFILES[tool][0][2]
+    rows = []
+    for name, dir_, instance in PROFILES[tool]:
+        try:
+            usage = live(dir_)
+            reason = "token vencido"
+        except Exception as e:  # red, 401, archivo ausente…
+            usage, reason = None, f"error API ({getattr(e, 'code', type(e).__name__)})"
+        if usage:
+            source = "en vivo"
+        else:
+            usage, why = cached(instance, base_instance)
+            source = f"{reason} → {why}"
+        margin = None
+        if usage and usage["session_used"] is not None and usage["weekly_used"] is not None:
+            margin = min(100 - usage["session_used"], 100 - usage["weekly_used"])
+        rows.append({"profile": name, "usage": usage, "margin": margin, "source": source})
+    return rows
+
+
+def choose(rows):
+    known = [r for r in rows if r["margin"] is not None]
+    if not known:
+        return rows[0]["profile"], "sin datos de cuota; uso el perfil por defecto"
+    preferred = rows[0]
+    if preferred["margin"] is not None and preferred["margin"] >= PREFER_MIN:
+        return preferred["profile"], f"{preferred['profile']} aún tiene {preferred['margin']:.0f}% de margen"
+    def limiting_reset(r):
+        # Ventana que limita el margen; en empate gana la que se libera antes.
+        u = r["usage"]
+        key = "session_reset" if 100 - u["session_used"] <= 100 - u["weekly_used"] else "weekly_reset"
+        return reset_in(u[key]) or "?", _secs_until(u[key])
+
+    best = max(known, key=lambda r: (round(r["margin"]), -limiting_reset(r)[1]))
+    if best["margin"] <= 0:
+        return best["profile"], f"todas agotadas; {best['profile']} se libera antes (en {limiting_reset(best)[0]})"
+    return best["profile"], f"{best['profile']} tiene más margen ({best['margin']:.0f}%)"
+
+
+def _secs_until(iso_or_epoch):
+    try:
+        if isinstance(iso_or_epoch, (int, float)):
+            return float(iso_or_epoch) - time.time()
+        return datetime.fromisoformat(str(iso_or_epoch).replace("Z", "+00:00")).timestamp() - time.time()
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+def fmt_pct(used):
+    return "   ?" if used is None else f"{100 - used:3.0f}%"
+
+
+def main(argv):
+    if len(argv) != 3 or argv[1] not in ("status", "pick") or argv[2] not in PROFILES:
+        print(__doc__.strip().split("\n\n")[0], file=sys.stderr)
+        return 2
+    cmd, tool = argv[1], argv[2]
+    rows = collect(tool)
+    profile, why = choose(rows)
+    if cmd == "pick":
+        print(profile)
+        print(f"{tool}-as auto → {profile}: {why}", file=sys.stderr)
+        return 0
+    print(f"{'perfil':<10} {'session':>8} {'weekly':>8}  {'reset session':<14} {'reset weekly':<13} fuente")
+    for r in rows:
+        u = r["usage"] or {}
+        mark = "→" if r["profile"] == profile else " "
+        print(
+            f"{mark}{r['profile']:<9} {fmt_pct(u.get('session_used')):>8} {fmt_pct(u.get('weekly_used')):>8}  "
+            f"{reset_in(u.get('session_reset')) or '-':<14} {reset_in(u.get('weekly_reset')) or '-':<13} {r['source']}"
+        )
+    print(f"\nauto elegiría: {profile} ({why})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
