@@ -1,6 +1,6 @@
 [/]
 control-center=['<Super>s']
-custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/','/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/']
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/','/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/','/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/spotify/']
 home=['<Super>d']
 terminal=@as []
 www=['<Super>b']
@@ -14,3 +14,8 @@ name='Fish'
 binding='<Super>Return'
 command='gnome-terminal -- fish'
 name='Fish (Super)'
+
+[custom-keybindings/spotify]
+binding='XF86Favorites'
+command='spotify'
+name='Spotify (Fn+F12)'
