@@ -8,12 +8,12 @@ rdesk -o DP-3 fedora    # captura otro monitor
 rdesk -k es fedora      # teclado de wayvnc en español (ñ, tildes)
 ```
 
-Ctrl-C en la terminal cierra el túnel.
+Ctrl-C en la terminal cierra el túnel. Una sesión a la vez: abrir otra `rdesk` al mismo host cierra la anterior.
 
 ## Cómo funciona
 
-1. Por SSH arranca `wayvnc` dentro de la sesión Wayland del remoto, escuchando **solo en su `127.0.0.1:5900`**.
-2. El mismo `ssh -L` lo trae a `127.0.0.1:5901` local (o el siguiente puerto libre).
+1. Por SSH arranca `wayvnc -r` dentro de la sesión Wayland del remoto, escuchando **solo en su `127.0.0.1:5900`**. `-r` dibuja el cursor en la imagen: Hyprland no se lo pasa al visor y sin eso no se ve el mouse.
+2. El mismo `ssh -L` lo trae a `127.0.0.1:5901` local (o el siguiente puerto libre). El lado local espera a que el remoto confirme que escucha *su* wayvnc, no cualquier proceso en el puerto.
 3. Abre `vncviewer` (TigerVNC) si está instalado; si no, Remmina con un perfil temporal.
 4. Al cerrar el túnel, el remoto recibe SIGHUP y `wayvnc` termina: no queda ningún puerto abierto.
 
