@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# rdesk — ver y controlar la sesión Wayland (Hyprland/wlroots) de otra máquina.
+#
+# Levanta wayvnc en el host remoto escuchando solo en su 127.0.0.1, lo tunela por
+# SSH y abre un visor VNC local. Al cerrar el túnel (Ctrl-C) wayvnc muere con él:
+# no queda ningún puerto abierto en el remoto.
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Uso: rdesk [opciones] <host>
+
+  <host>             alias de ~/.ssh/config (p. ej. fedora)
+
+Opciones:
+  -o, --output NAME  monitor a capturar (p. ej. DP-3); por defecto el primero
+  -k, --keyboard KB  layout de teclado de wayvnc (p. ej. es, latam, us-altgr-intl)
+  -p, --port N       puerto de wayvnc en el 127.0.0.1 remoto (por defecto 5900)
+  -h, --help         esta ayuda
+
+Ctrl-C cierra el túnel y apaga wayvnc en el remoto.
+EOF
+}
+
+host=""
+output=""
+keyboard=""
+remote_port=5900
+
+while (($# > 0)); do
+    case "$1" in
+        -o|--output) output="${2:?falta el nombre del monitor}"; shift ;;
+        -k|--keyboard) keyboard="${2:?falta el layout}"; shift ;;
+        -p|--port) remote_port="${2:?falta el puerto}"; shift ;;
+        -h|--help) usage; exit 0 ;;
+        -*) echo "rdesk: opción desconocida: $1" >&2; usage >&2; exit 2 ;;
+        *) host="$1" ;;
+    esac
+    shift
+done
+
+if [ -z "$host" ]; then
+    usage >&2
+    exit 2
+fi
+
+port_in_use() {
+    (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
+local_port=5901
+while port_in_use "$local_port"; do
+    local_port=$((local_port + 1))
+done
+
+wayvnc_args=(-L warning)
+[ -n "$output" ] && wayvnc_args+=(-o "$output")
+[ -n "$keyboard" ] && wayvnc_args+=(-k "$keyboard")
+wayvnc_args+=(127.0.0.1 "$remote_port")
+
+# Se ejecuta en el remoto: busca el socket de la sesión Wayland del usuario.
+remote_cmd=$(cat <<EOF
+command -v wayvnc >/dev/null || { echo "rdesk: wayvnc no está instalado en \$(hostname)" >&2; exit 127; }
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+export WAYLAND_DISPLAY=\$(ls "\$XDG_RUNTIME_DIR" 2>/dev/null | grep -m1 -xE 'wayland-[0-9]+')
+[ -n "\$WAYLAND_DISPLAY" ] || { echo "rdesk: no hay sesión Wayland activa en \$(hostname) (¿nadie logueado?)" >&2; exit 1; }
+# Un wayvnc cortado por SIGHUP deja su socket de control; se borra si no hay otro corriendo.
+pgrep -x wayvnc >/dev/null || rm -f "\$XDG_RUNTIME_DIR/wayvncctl"
+exec wayvnc ${wayvnc_args[*]@Q}
+EOF
+)
+
+profile=""
+ssh_pid=""
+cleanup() {
+    [ -n "$ssh_pid" ] && kill "$ssh_pid" 2>/dev/null || true
+    [ -n "$profile" ] && rm -f "$profile"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+# -tt: al caerse la conexión el remoto recibe SIGHUP y wayvnc termina.
+ssh -tt -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o LogLevel=ERROR \
+    -L "$local_port:127.0.0.1:$remote_port" "$host" "$remote_cmd" </dev/null &
+ssh_pid=$!
+
+echo "rdesk: conectando a $host…"
+for _ in $(seq 1 30); do
+    if ! kill -0 "$ssh_pid" 2>/dev/null; then
+        wait "$ssh_pid" || true
+        echo "rdesk: el túnel a $host se cerró antes de que wayvnc respondiera" >&2
+        exit 1
+    fi
+    if banner=$(timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/$local_port; head -c 3 <&3" 2>/dev/null) \
+        && [ "$banner" = "RFB" ]; then
+        break
+    fi
+    sleep 0.5
+done
+
+if [ "${banner:-}" != "RFB" ]; then
+    echo "rdesk: wayvnc no respondió en $host" >&2
+    exit 1
+fi
+
+if command -v vncviewer >/dev/null 2>&1; then
+    vncviewer "127.0.0.1::$local_port" &
+    viewer_pid=$!
+    echo "rdesk: $host en vncviewer. Cierra la ventana o Ctrl-C para terminar."
+    wait -n "$ssh_pid" "$viewer_pid" || true
+elif command -v remmina >/dev/null 2>&1; then
+    profile="${XDG_RUNTIME_DIR:-/tmp}/rdesk-$host.remmina"
+    cat >"$profile" <<EOF
+[remmina]
+name=rdesk $host
+protocol=VNC
+server=127.0.0.1:$local_port
+quality=9
+scale=1
+disablepasswordstoring=1
+EOF
+    remmina -c "$profile" >/dev/null 2>&1 &
+    # remmina puede entregarle la conexión a una instancia ya abierta y salir,
+    # así que la sesión dura lo que dure el túnel.
+    echo "rdesk: $host en Remmina (127.0.0.1:$local_port). Ctrl-C aquí cierra el túnel."
+    wait "$ssh_pid" || true
+else
+    echo "rdesk: no hay visor VNC local; instala remmina-plugin-vnc o tigervnc-viewer" >&2
+    echo "rdesk: el túnel queda en 127.0.0.1:$local_port hasta Ctrl-C"
+    wait "$ssh_pid" || true
+fi

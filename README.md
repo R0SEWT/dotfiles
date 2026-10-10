@@ -20,6 +20,7 @@ This repository manages the stable parts of the environment:
 - `git/`: public Git defaults
 - `gh/`: GitHub CLI non-secret config
 - `terminal/`: terminal app configs
+- `remote-desktop/`: `rdesk <host>` to view and control a remote Wayland (Hyprland/wlroots) session via wayvnc over SSH
 - `vscode/`: VS Code user config
 - `easyeffects/`: EasyEffects output presets (PipeWire)
 - `packages/`: package lists
